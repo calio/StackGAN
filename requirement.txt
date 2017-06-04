@@ -1,0 +1,11 @@
+tensorflow-gpu==0.11.0
+tensorflow==0.11.0
+prettytensor==0.6.2
+progressbar
+python-dateutil
+easydict
+pandas
+torchfile
+pyyaml
+scipy
+pillow
