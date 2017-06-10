@@ -72,7 +72,7 @@ def save_data_list(outpath, filenames):
 
     outfile = outpath + 'filenames.pickle'
     with open(outfile, 'wb') as f_out:
-        pickle.dump(filenames, f_out)
+        pickle.dump([os.path.basename(name) for name in filenames], f_out)
         print('save to: ', outfile)
 
     # TODO Use fake classes for now, switch to real data when it's available
