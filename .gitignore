@@ -2,3 +2,4 @@
 ckt_logs
 backup
 debug
+*.sw*
