@@ -101,11 +101,21 @@ class CondGANTrainer(object):
                 fake_images = self.model.get_generator(tf.concat(1, [c, z]))
 
             # ####get discriminator_loss and generator_loss ###################
-            discriminator_loss, generator_loss =\
-                self.compute_losses(self.images,
-                                    self.wrong_images,
-                                    fake_images,
-                                    self.embeddings)
+            if cfg.GAN.LOSS == 'default':
+                discriminator_loss, generator_loss =\
+                    self.compute_losses(self.images,
+                                        self.wrong_images,
+                                        fake_images,
+                                        self.embeddings)
+            elif cfg.GAN.LOSS == 'wgan':
+                discriminator_loss, generator_loss =\
+                    self.compute_wgan_losses(self.images,
+                                        self.wrong_images,
+                                        fake_images,
+                                        self.embeddings)
+            else:
+                raise NotImplementedError
+
             generator_loss += kl_loss
             self.log_vars.append(("g_loss_kl_loss", kl_loss))
             self.log_vars.append(("g_loss", generator_loss))
@@ -129,6 +139,34 @@ class CondGANTrainer(object):
         else:
             z = tf.random_normal([self.batch_size, cfg.Z_DIM])
         self.fake_images = self.model.get_generator(tf.concat(1, [c, z]))
+
+    def compute_wgan_losses(self, images, wrong_images, fake_images, embeddings, lam=10):
+        real_logit = self.model.get_discriminator(images, embeddings)
+        wrong_logit = self.model.get_discriminator(wrong_images, embeddings)
+        fake_logit = self.model.get_discriminator(fake_images, embeddings)
+
+        eps = tf.random_uniform([tf.shape(images)[0], 1])
+        x_hat = eps * images + (1 - eps) * fake_images
+
+        with tf.variable_scope('d_net', reuse=True) as scope:
+            grad_D_x_hat = tf.gradients([self.model.get_discriminator(x_hat, embeddings)], [x_hat])[0]
+        #grad_norm = tf.norm(grad_D_x_hat, ord=2)
+        grad_norm = tf.sqrt(tf.reduce_sum(tf.square(grad_D_x_hat), [1, 2, 3]))
+        grad_pen = lam * tf.square(grad_norm - 1)
+        #print(images, fake_images, eps, x_hat, grad_D_x_hat, grad_norm, grad_pen, eps, x_hat, images)
+
+        fake_score = tf.reshape(fake_logit, [tf.shape(fake_logit)[0], 1])
+        wrong_score = tf.reshape(wrong_logit, [tf.shape(wrong_logit)[0], 1])
+        real_score = tf.reshape(real_logit, [tf.shape(real_logit)[0], 1])
+
+        D_loss = tf.reduce_mean(fake_score + wrong_score - real_score + grad_pen)
+        G_loss = tf.reduce_mean(-fake_score)
+
+        self.log_vars.append(("d_loss_real", 0))
+        self.log_vars.append(("d_loss_fake", 0))
+        self.log_vars.append(("d_loss_wrong", 0))
+        #print(D_loss, G_loss, fake_logit.shape, wrong_logit.shape, real_logit.shape, grad_pen)
+        return D_loss, G_loss
 
     def compute_losses(self, images, wrong_images, fake_images, embeddings):
         real_logit = self.model.get_discriminator(images, embeddings)

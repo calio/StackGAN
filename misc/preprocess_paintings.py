@@ -27,12 +27,13 @@ LR_HR_RATIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
 INPUT_DATA_DIR="Data/paintings"
-NUM_TRAIN=1000
+NUM_TRAIN=3000
+CAPTION_CSV="paintings.csv"
 
 numbers = re.compile(r'(\d+)')
 def numerical_sort(value):
     parts = numbers.split(value)
-    print(parts)
+    #print(parts)
     parts[1::2] = map(int, parts[1::2])
     return parts
 
@@ -47,6 +48,7 @@ def save_data_list(outpath, filenames):
     lr_size = int(LOAD_SIZE / LR_HR_RATIO)
     cnt = 0
     for f_name in filenames:
+        print('processing %s' % f_name)
         img = get_image(f_name, LOAD_SIZE, is_crop=False)
         img = img.astype('uint8')
         hr_images.append(img)
@@ -97,11 +99,12 @@ def convert_images_to_pickle():
 
 class Encoder():
     def encode(self, a):
-        return 0
+        return a
 
 def save_embeddings_csv(outpath, encoder):
     embeddings = []
-    captions_file = os.path.join(INPUT_DATA_DIR, "paintings.csv")
+    captions_file = os.path.join(INPUT_DATA_DIR, CAPTION_CSV)
+    captions = []
     with open(captions_file) as f:
         data = csv.reader(f)
         i = 1
@@ -110,13 +113,21 @@ def save_embeddings_csv(outpath, encoder):
                    "image id not match, expect %s got %s" % (str(i), row[0])
             caption = row[1]
             print("[From CSV] Encode %s" % caption)
-            vector = encoder.encode(np.array([caption]))
-            embeddings.append(vector)
+            captions.append(caption)
             i += 1
 
-    outfile = outpath + "/skip-thought-embeddings.pickle"
+    embeddings = encoder.encode(np.array(captions))
+
+    outfile = os.path.join(outpath, "train/skip-thought-embeddings.pickle")
+    print(outpath)
+    print(outfile)
     with open(outfile, 'wb') as f_out:
-        pickle.dump(embeddings, f_out)
+        pickle.dump(embeddings[:NUM_TRAIN], f_out)
+        print('save to: ', outfile)
+
+    outfile = os.path.join(outpath,  "test/skip-thought-embeddings.pickle")
+    with open(outfile, 'wb') as f_out:
+        pickle.dump(embeddings[NUM_TRAIN:], f_out)
         print('save to: ', outfile)
 
 def save_embeddings_json(outpath, encoder):
@@ -151,7 +162,7 @@ def gen_caption_files():
     if not os.path.exists(captions_path):
         os.mkdir(captions_path)
 
-    captions_file = os.path.join(INPUT_DATA_DIR, "corrected_vis.csv")
+    captions_file = os.path.join(INPUT_DATA_DIR, CAPTION_CSV)
     with open(captions_file) as f:
         csvreader = csv.reader(f)
         for row in csvreader:
