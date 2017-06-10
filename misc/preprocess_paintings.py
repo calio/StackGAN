@@ -15,6 +15,14 @@ import scipy.misc
 import misc.skipthoughts as skipthoughts
 
 
+#########################################
+# Input
+#  Data/paintings
+#   - imgs
+#   - paintings.csv
+#########################################
+
+
 LR_HR_RATIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
@@ -79,6 +87,11 @@ def convert_images_to_pickle():
     train_dir = os.path.join(INPUT_DATA_DIR, "train/")
     test_dir = os.path.join(INPUT_DATA_DIR, "test/")
 
+    if not os.path.exists(train_dir):
+        os.mkdir(train_dir)
+    if not os.path.exists(test_dir):
+        os.mkdir(test_dir)
+
     save_data_list(train_dir, filenames[:NUM_TRAIN])
     save_data_list(test_dir, filenames[NUM_TRAIN:])
 
@@ -88,7 +101,7 @@ class Encoder():
 
 def save_embeddings_csv(outpath, encoder):
     embeddings = []
-    captions_file = os.path.join(INPUT_DATA_DIR, "corrected_vis.csv")
+    captions_file = os.path.join(INPUT_DATA_DIR, "paintings.csv")
     with open(captions_file) as f:
         data = csv.reader(f)
         i = 1
@@ -108,7 +121,7 @@ def save_embeddings_csv(outpath, encoder):
 
 def save_embeddings_json(outpath, encoder):
     embeddings = []
-    captions_file = os.path.join(INPUT_DATA_DIR, "vis.json")
+    captions_file = os.path.join(INPUT_DATA_DIR, "paintings.json")
     with open(captions_file) as f:
         data = json.load(f)
 
