@@ -117,6 +117,12 @@ class CondGANTrainer(object):
                                         self.wrong_images,
                                         fake_images,
                                         self.embeddings)
+            elif cfg.GAN.LOSS == 'entropy':
+                discriminator_loss, generator_loss =\
+                    self.compute_losses_with_entropy(self.images,
+                                        self.wrong_images,
+                                        fake_images,
+                                        self.embeddings)
             else:
                 raise NotImplementedError
 
@@ -144,41 +150,14 @@ class CondGANTrainer(object):
             z = tf.random_normal([self.batch_size, cfg.Z_DIM])
         self.fake_images = self.model.get_generator(tf.concat(1, [c, z]))
 
-    def compute_wgan_losses(self, images, wrong_images, fake_images, embeddings, lam=10):
-        real_logit = self.model.get_discriminator(images, embeddings)
-        wrong_logit = self.model.get_discriminator(wrong_images, embeddings)
-        fake_logit = self.model.get_discriminator(fake_images, embeddings)
-
-        eps = tf.random_uniform([tf.shape(images)[0], 1])
-        x_hat = eps * images + (1 - eps) * fake_images
-
-        with tf.variable_scope('d_net', reuse=True) as scope:
-            grad_D_x_hat = tf.gradients([self.model.get_discriminator(x_hat, embeddings)], [x_hat])[0]
-        #grad_norm = tf.norm(grad_D_x_hat, ord=2)
-        grad_norm = tf.sqrt(tf.reduce_sum(tf.square(grad_D_x_hat), [1, 2, 3]))
-        grad_pen = lam * tf.square(grad_norm - 1)
-        #print(images, fake_images, eps, x_hat, grad_D_x_hat, grad_norm, grad_pen, eps, x_hat, images)
-
-        fake_score = tf.reshape(fake_logit, [tf.shape(fake_logit)[0], 1])
-        wrong_score = tf.reshape(wrong_logit, [tf.shape(wrong_logit)[0], 1])
-        real_score = tf.reshape(real_logit, [tf.shape(real_logit)[0], 1])
-
-        D_loss = tf.reduce_mean(fake_score + wrong_score - real_score + grad_pen)
-        G_loss = tf.reduce_mean(-fake_score)
-
-        self.log_vars.append(("d_loss_real", 0))
-        self.log_vars.append(("d_loss_fake", 0))
-        self.log_vars.append(("d_loss_wrong", 0))
-        #print(D_loss, G_loss, fake_logit.shape, wrong_logit.shape, real_logit.shape, grad_pen)
-        return D_loss, G_loss
-
     def entropyv(self, imgs, batch=16):
         '''
         compute image entropy
         '''
         #batch = imgs.get_shape()[0]
         #print('Img shape: ', imgs.get_shape(), 'batch:', batch)
-        imgs = tf.cast((imgs + 1) * 255 / 2, tf.int8)
+        with tf.get_default_graph().gradient_override_map({"Floor": "Identity"}):
+            imgs = tf.floor((imgs + 1) * 255 / 2)
         flats = tf.reshape(imgs, shape=[batch, -1])
         lflats = tf.unpack(flats)
         lentropy = []
@@ -195,11 +174,29 @@ class CondGANTrainer(object):
         compute image entropy separately for 3 channels separately.
         Returns combined entropy and average entropy across the same batch
         '''
-        res = self.entropyv(images[:,:,:0]) + \
-              self.entropyv(images[:,:,:1]) + \
-              self.entropyv(images[:,:,:2])
+        res = self.entropyv(images[:,:,:0], batch) + \
+              self.entropyv(images[:,:,:1], batch) + \
+              self.entropyv(images[:,:,:2], batch)
         avg = tf.reduce_mean(res)
         return res, avg
+
+    def compute_entropy_loss(self, images, fake_images):
+        entropy_real, real_avg_entropy = self.entropy3v(images, batch=self.batch_size)
+        entropy_fake, fake_avg_entropy = self.entropy3v(fake_images, batch=self.batch_size)
+
+        return tf.sqrt(tf.reduce_sum(tf.square(entropy_real - entropy_fake)))
+
+    def compute_losses_with_entropy(self, images, wrong_images, fake_images, embeddings):
+        d_loss, g_loss = self.compute_losses(images, wrong_images, fake_images, embeddings)
+        entropy_loss = self.compute_entropy_loss(images, fake_images)
+        grads = tf.gradients([entropy_loss], [fake_images])
+        print(grads)
+        grad_fake_images = grads[0]
+        grad_fake_images = tf.reduce_sum(tf.square(grad_fake_images))
+        self.log_vars.append(("g_entropy_loss", entropy_loss))
+        self.log_vars.append(("g_grad_fake_images", grad_fake_images))
+        return d_loss, g_loss + entropy_loss
+
 
     def compute_losses(self, images, wrong_images, fake_images, embeddings):
         real_logit = self.model.get_discriminator(images, embeddings)
@@ -242,6 +239,34 @@ class CondGANTrainer(object):
         generator_loss = tf.reduce_mean(generator_loss)
 
         return discriminator_loss, generator_loss
+
+    def compute_wgan_losses(self, images, wrong_images, fake_images, embeddings, lam=10):
+        real_logit = self.model.get_discriminator(images, embeddings)
+        wrong_logit = self.model.get_discriminator(wrong_images, embeddings)
+        fake_logit = self.model.get_discriminator(fake_images, embeddings)
+
+        eps = tf.random_uniform([tf.shape(images)[0], 1])
+        x_hat = eps * images + (1 - eps) * fake_images
+
+        with tf.variable_scope('d_net', reuse=True) as scope:
+            grad_D_x_hat = tf.gradients([self.model.get_discriminator(x_hat, embeddings)], [x_hat])[0]
+        #grad_norm = tf.norm(grad_D_x_hat, ord=2)
+        grad_norm = tf.sqrt(tf.reduce_sum(tf.square(grad_D_x_hat), [1, 2, 3]))
+        grad_pen = lam * tf.square(grad_norm - 1)
+        #print(images, fake_images, eps, x_hat, grad_D_x_hat, grad_norm, grad_pen, eps, x_hat, images)
+
+        fake_score = tf.reshape(fake_logit, [tf.shape(fake_logit)[0], 1])
+        wrong_score = tf.reshape(wrong_logit, [tf.shape(wrong_logit)[0], 1])
+        real_score = tf.reshape(real_logit, [tf.shape(real_logit)[0], 1])
+
+        D_loss = tf.reduce_mean(fake_score + wrong_score - real_score + grad_pen)
+        G_loss = tf.reduce_mean(-fake_score)
+
+        self.log_vars.append(("d_loss_real", 0))
+        self.log_vars.append(("d_loss_fake", 0))
+        self.log_vars.append(("d_loss_wrong", 0))
+        #print(D_loss, G_loss, fake_logit.shape, wrong_logit.shape, real_logit.shape, grad_pen)
+        return D_loss, G_loss
 
     def prepare_trainer(self, generator_loss, discriminator_loss):
         '''Helper function for init_opt'''

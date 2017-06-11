@@ -24,4 +24,4 @@ GAN:
     DF_DIM: 64
     GF_DIM: 128
     NETWORK_TYPE: "simple"
-    LOSS: 'default'
+    LOSS: 'entropy'
