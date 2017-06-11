@@ -8,6 +8,11 @@ from misc.custom_ops import leaky_rectify
 from misc.config import cfg
 
 
+def log2(x):
+    numerator = tf.log(x)
+    denominator = tf.log(tf.constant(2, dtype=numerator.dtype))
+    return numerator / denominator
+
 class CondGAN(object):
     def __init__(self, image_shape):
         self.batch_size = cfg.TRAIN.BATCH_SIZE

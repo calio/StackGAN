@@ -24,6 +24,10 @@ def KL_loss(mu, log_sigma):
         loss = tf.reduce_mean(loss)
         return loss
 
+def log2(x):
+    numerator = tf.log(x)
+    denominator = tf.log(tf.constant(2, dtype=numerator.dtype))
+    return numerator / denominator
 
 class CondGANTrainer(object):
     def __init__(self,
@@ -168,6 +172,20 @@ class CondGANTrainer(object):
         #print(D_loss, G_loss, fake_logit.shape, wrong_logit.shape, real_logit.shape, grad_pen)
         return D_loss, G_loss
 
+    def entropyv(self, imgs, batch=16):
+        #batch = imgs.get_shape()[0]
+        #print('Img shape: ', imgs.get_shape(), 'batch:', batch)
+        flats = tf.reshape(imgs, shape=[batch, -1])
+        lflats = tf.unpack(flats)
+        lentropy = []
+        for flat in lflats:
+            y, idx, count = tf.unique_with_counts(flat)
+            probs = tf.cast(count, tf.float32) / tf.cast(tf.reduce_sum(count), tf.float32)
+            e = tf.reduce_sum(log2(1.0 / probs))
+            lentropy.append(e)
+        res = tf.pack(lentropy)
+        return res, tf.reduce_mean(res)
+
     def compute_losses(self, images, wrong_images, fake_images, embeddings):
         real_logit = self.model.get_discriminator(images, embeddings)
         wrong_logit = self.model.get_discriminator(wrong_images, embeddings)
@@ -191,8 +209,17 @@ class CondGANTrainer(object):
             self.log_vars.append(("d_loss_wrong", wrong_d_loss))
         else:
             discriminator_loss = real_d_loss + fake_d_loss
+
         self.log_vars.append(("d_loss_real", real_d_loss))
         self.log_vars.append(("d_loss_fake", fake_d_loss))
+
+        #print(images.get_shape())
+        #print(fake_images.get_shape())
+        entropy_real, real_avg_entropy = self.entropyv(images, batch=self.batch_size)
+        entropy_fake, fake_avg_entropy = self.entropyv(fake_images, batch=self.batch_size)
+
+        self.log_vars.append(("real_avg_entropy", real_avg_entropy))
+        self.log_vars.append(("fake_avg_entropy", fake_avg_entropy))
 
         generator_loss = \
             tf.nn.sigmoid_cross_entropy_with_logits(fake_logit,
