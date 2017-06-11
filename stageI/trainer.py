@@ -173,8 +173,12 @@ class CondGANTrainer(object):
         return D_loss, G_loss
 
     def entropyv(self, imgs, batch=16):
+        '''
+        compute image entropy
+        '''
         #batch = imgs.get_shape()[0]
         #print('Img shape: ', imgs.get_shape(), 'batch:', batch)
+        imgs = tf.cast((imgs + 1) * 255 / 2, tf.int8)
         flats = tf.reshape(imgs, shape=[batch, -1])
         lflats = tf.unpack(flats)
         lentropy = []
@@ -184,7 +188,18 @@ class CondGANTrainer(object):
             e = tf.reduce_sum(log2(1.0 / probs))
             lentropy.append(e)
         res = tf.pack(lentropy)
-        return res, tf.reduce_mean(res)
+        return res
+
+    def entropy3v(self, images, batch=16):
+        '''
+        compute image entropy separately for 3 channels separately.
+        Returns combined entropy and average entropy across the same batch
+        '''
+        res = self.entropyv(images[:,:,:0]) + \
+              self.entropyv(images[:,:,:1]) + \
+              self.entropyv(images[:,:,:2])
+        avg = tf.reduce_mean(res)
+        return res, avg
 
     def compute_losses(self, images, wrong_images, fake_images, embeddings):
         real_logit = self.model.get_discriminator(images, embeddings)
@@ -215,8 +230,8 @@ class CondGANTrainer(object):
 
         #print(images.get_shape())
         #print(fake_images.get_shape())
-        entropy_real, real_avg_entropy = self.entropyv(images, batch=self.batch_size)
-        entropy_fake, fake_avg_entropy = self.entropyv(fake_images, batch=self.batch_size)
+        entropy_real, real_avg_entropy = self.entropy3v(images, batch=self.batch_size)
+        entropy_fake, fake_avg_entropy = self.entropy3v(fake_images, batch=self.batch_size)
 
         self.log_vars.append(("g_real_avg_entropy", real_avg_entropy))
         self.log_vars.append(("g_fake_avg_entropy", fake_avg_entropy))
