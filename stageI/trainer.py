@@ -218,8 +218,8 @@ class CondGANTrainer(object):
         entropy_real, real_avg_entropy = self.entropyv(images, batch=self.batch_size)
         entropy_fake, fake_avg_entropy = self.entropyv(fake_images, batch=self.batch_size)
 
-        self.log_vars.append(("real_avg_entropy", real_avg_entropy))
-        self.log_vars.append(("fake_avg_entropy", fake_avg_entropy))
+        self.log_vars.append(("g_real_avg_entropy", real_avg_entropy))
+        self.log_vars.append(("g_fake_avg_entropy", fake_avg_entropy))
 
         generator_loss = \
             tf.nn.sigmoid_cross_entropy_with_logits(fake_logit,
