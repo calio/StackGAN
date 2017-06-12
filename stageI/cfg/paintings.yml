@@ -22,6 +22,6 @@ TRAIN:
 GAN:
     EMBEDDING_DIM: 128
     DF_DIM: 64
-    GF_DIM: 128
-    NETWORK_TYPE: "simple"
-    LOSS: 'entropy'
+    GF_DIM: 64
+    NETWORK_TYPE: "deep"
+    LOSS: 'default'
