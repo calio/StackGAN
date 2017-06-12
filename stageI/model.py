@@ -41,6 +41,11 @@ class CondGAN(object):
                 self.d_encode_img_template = self.d_encode_image_simple()
                 self.d_context_template = self.context_embedding()
                 self.discriminator_template = self.discriminator()
+        elif cfg.GAN.NETWORK_TYPE == "medium":
+            with tf.variable_scope("d_net"):
+                self.d_encode_img_template = self.d_encode_image_simple()
+                self.d_context_template = self.context_embedding()
+                self.discriminator_template = self.discriminator()
         else:
             raise NotImplementedError
 
@@ -145,11 +150,66 @@ class CondGAN(object):
              apply(tf.nn.tanh))
         return output_tensor
 
+    def generator_medium(self, z_var):
+        node_input =\
+            (pt.wrap(z_var).
+             flatten().
+             custom_fully_connected(self.s16 * self.s16 * self.gf_dim * 8).
+             reshape([-1, self.s16, self.s16, self.gf_dim * 8]).
+             conv_batch_norm().
+             apply(leaky_rectify, leakiness=0.2))
+
+        node0 = \
+            (node_input.
+             custom_deconv2d([0, self.s8, self.s8, self.gf_dim * 4], k_h=4, k_w=4).
+             # apply(tf.image.resize_nearest_neighbor, [self.s8, self.s8]).
+             # custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(leaky_rectify, leakiness=0.2))
+
+        node2_0 = \
+            (node0.
+             custom_deconv2d([0, self.s2, self.s2, self.gf_dim], k_h=4, k_w=4).
+             conv_batch_norm().
+             apply(leaky_rectify, leakiness=0.2))
+        print('node2_0:', node2_0.shape)
+
+        node1 = \
+            (node0.
+             custom_deconv2d([0, self.s4, self.s4, self.gf_dim * 2], k_h=4, k_w=4).
+             # apply(tf.image.resize_nearest_neighbor, [self.s4, self.s4]).
+             # custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(leaky_rectify, leakiness=0.2))
+        print('node1:', node1.shape)
+
+        node2 = \
+            (node1.
+             custom_deconv2d([0, self.s2, self.s2, self.gf_dim], k_h=4, k_w=4).
+             # apply(tf.image.resize_nearest_neighbor, [self.s2, self.s2]).
+             # custom_conv2d(self.gf_dim, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(leaky_rectify, leakiness=0.2))
+             #concat(concat_dim=3, other_tensors=[node2_0]))
+        print('node2:', node2.shape)
+
+        node3 = \
+            (node2.
+             custom_deconv2d([0] + list(self.image_shape), k_h=4, k_w=4).
+             # apply(tf.image.resize_nearest_neighbor, [self.s, self.s]).
+             # custom_conv2d(3, k_h=3, k_w=3, d_h=1, d_w=1).
+             apply(tf.nn.tanh))
+
+        output_tensor = node3
+        return output_tensor
+
     def get_generator(self, z_var):
         if cfg.GAN.NETWORK_TYPE == "default":
             return self.generator(z_var)
         elif cfg.GAN.NETWORK_TYPE == "simple":
             return self.generator_simple(z_var)
+        elif cfg.GAN.NETWORK_TYPE == "medium":
+            return self.generator_medium(z_var)
         else:
             raise NotImplementedError
 

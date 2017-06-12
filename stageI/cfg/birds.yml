@@ -23,5 +23,5 @@ GAN:
     EMBEDDING_DIM: 128
     DF_DIM: 64
     GF_DIM: 128
-    NETWORK_TYPE: "simple"
+    NETWORK_TYPE: "medium"
     LOSS: 'default'
