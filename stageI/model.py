@@ -41,9 +41,9 @@ class CondGAN(object):
                 self.d_encode_img_template = self.d_encode_image_simple()
                 self.d_context_template = self.context_embedding()
                 self.discriminator_template = self.discriminator()
-        elif cfg.GAN.NETWORK_TYPE == "medium":
+        elif cfg.GAN.NETWORK_TYPE == "deep":
             with tf.variable_scope("d_net"):
-                self.d_encode_img_template = self.d_encode_image_simple()
+                self.d_encode_img_template = self.d_encode_image()
                 self.d_context_template = self.context_embedding()
                 self.discriminator_template = self.discriminator()
         else:
@@ -150,57 +150,97 @@ class CondGAN(object):
              apply(tf.nn.tanh))
         return output_tensor
 
-    def generator_medium(self, z_var):
-        node_input =\
+    def generator_deep(self, z_var):
+        node1_0 =\
             (pt.wrap(z_var).
              flatten().
              custom_fully_connected(self.s16 * self.s16 * self.gf_dim * 8).
-             reshape([-1, self.s16, self.s16, self.gf_dim * 8]).
+             fc_batch_norm().
+             reshape([-1, self.s16, self.s16, self.gf_dim * 8]))
+        node1_1 = \
+            (node1_0.
+             custom_conv2d(self.gf_dim * 2, k_h=1, k_w=1, d_h=1, d_w=1).
              conv_batch_norm().
-             apply(leaky_rectify, leakiness=0.2))
-
-        node0 = \
-            (node_input.
-             custom_deconv2d([0, self.s8, self.s8, self.gf_dim * 4], k_h=4, k_w=4).
-             # apply(tf.image.resize_nearest_neighbor, [self.s8, self.s8]).
-             # custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
              conv_batch_norm().
-             apply(leaky_rectify, leakiness=0.2))
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 8, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node1 = \
+            (node1_0.
+             apply(tf.add, node1_1).
+             apply(tf.nn.relu))
 
         node2_0 = \
-            (node0.
-             custom_deconv2d([0, self.s2, self.s2, self.gf_dim], k_h=4, k_w=4).
-             conv_batch_norm().
-             apply(leaky_rectify, leakiness=0.2))
-        print('node2_0:', node2_0.shape)
-
-        node1 = \
-            (node0.
-             custom_deconv2d([0, self.s4, self.s4, self.gf_dim * 2], k_h=4, k_w=4).
-             # apply(tf.image.resize_nearest_neighbor, [self.s4, self.s4]).
-             # custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
-             conv_batch_norm().
-             apply(leaky_rectify, leakiness=0.2))
-        print('node1:', node1.shape)
-
-        node2 = \
             (node1.
-             custom_deconv2d([0, self.s2, self.s2, self.gf_dim], k_h=4, k_w=4).
-             # apply(tf.image.resize_nearest_neighbor, [self.s2, self.s2]).
-             # custom_conv2d(self.gf_dim, k_h=3, k_w=3, d_h=1, d_w=1).
+             custom_deconv2d([0, self.s8, self.s8, self.gf_dim * 4], k_h=4, k_w=4).
+             #apply(tf.image.resize_nearest_neighbor, [self.s8, self.s8]).
+             custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node2_1 = \
+            (node2_0.
+             custom_conv2d(self.gf_dim * 1, k_h=1, k_w=1, d_h=1, d_w=1).
              conv_batch_norm().
-             apply(leaky_rectify, leakiness=0.2))
-             #concat(concat_dim=3, other_tensors=[node2_0]))
-        print('node2:', node2.shape)
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 1, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node2 = \
+            (node2_0.
+             apply(tf.add, node2_1).
+             apply(tf.nn.relu))
 
-        node3 = \
+	node3_0 = \
             (node2.
-             custom_deconv2d([0] + list(self.image_shape), k_h=4, k_w=4).
-             # apply(tf.image.resize_nearest_neighbor, [self.s, self.s]).
-             # custom_conv2d(3, k_h=3, k_w=3, d_h=1, d_w=1).
-             apply(tf.nn.tanh))
+             custom_deconv2d([0, self.s4, self.s4, self.gf_dim * 2], k_h=4, k_w=4).
+             #apply(tf.image.resize_nearest_neighbor, [self.s4, self.s4]).
+             custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node3_1 = \
+            (node3_0.
+             custom_conv2d(self.gf_dim * 1, k_h=1, k_w=1, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 1, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node3 = \
+            (node3_0.
+             apply(tf.add, node3_1).
+             apply(tf.nn.relu))
 
-        output_tensor = node3
+	node4_0 = \
+            (node3.
+             custom_deconv2d([0, self.s2, self.s2, self.gf_dim * 2], k_h=4, k_w=4).
+             #apply(tf.image.resize_nearest_neighbor, [self.s2, self.s2]).
+             custom_conv2d(self.gf_dim * 1, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node4_1 = \
+            (node4_0.
+             custom_conv2d(self.gf_dim * 0.5, k_h=1, k_w=1, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 0.5, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm().
+             apply(tf.nn.relu).
+             custom_conv2d(self.gf_dim * 1, k_h=3, k_w=3, d_h=1, d_w=1).
+             conv_batch_norm())
+        node4 = \
+            (node4_0.
+             apply(tf.add, node4_1).
+             apply(tf.nn.relu))
+         
+        output_tensor = \
+            (node4.
+             custom_deconv2d([0] + list(self.image_shape), k_h=4, k_w=4).
+             #apply(tf.image.resize_nearest_neighbor, [self.s, self.s]).
+             custom_conv2d(3, k_h=3, k_w=3, d_h=1, d_w=1).
+             apply(tf.nn.tanh))
         return output_tensor
 
     def get_generator(self, z_var):
@@ -208,8 +248,8 @@ class CondGAN(object):
             return self.generator(z_var)
         elif cfg.GAN.NETWORK_TYPE == "simple":
             return self.generator_simple(z_var)
-        elif cfg.GAN.NETWORK_TYPE == "medium":
-            return self.generator_medium(z_var)
+        elif cfg.GAN.NETWORK_TYPE == "deep":
+            return self.generator_deep(z_var)
         else:
             raise NotImplementedError
 
